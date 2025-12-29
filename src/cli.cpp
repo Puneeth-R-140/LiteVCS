@@ -39,7 +39,18 @@ else if (args[1] == "go") {
     repo.goToCommit(args[2]);
 }
 else if (args[1] == "diff") {
-    repo.diff();
+    bool smart = false, ignoreEmpty = false, ignoreWhitespace = false;
+
+    for (size_t i = 2; i < args.size(); ++i) {
+        if (args[i] == "--smart") smart = true;
+        else if (args[i] == "--ignore-empty") ignoreEmpty = true;
+        else if (args[i] == "--ignore-whitespace") ignoreWhitespace = true;
+    }
+
+    if (smart)
+        repo.diffSmart(ignoreEmpty, ignoreWhitespace);
+    else
+        repo.diff(ignoreEmpty, ignoreWhitespace);
 }
 else {
         std::cout << "Unknown command: " << args[1] << "\n";

@@ -12,7 +12,9 @@ public:
     void save(const std::string& message);
     void showHistory();
     void goToCommit(const std::string& commitHash);
-    void diff();
+    void diff(bool ignoreEmpty, bool ignoreWhitespace);
+    void diffSmart(bool ignoreEmpty, bool ignoreWhitespace);
+
    
 private:
     std::string root;
@@ -24,5 +26,12 @@ private:
     std::string readObject(const std::string& path);
     std::string resolveCommitHash(const std::string& prefix);
     std::vector<std::string> splitLines(const std::string& content);
-   
+    
+    
+    std::string normalizeWhitespace(const std::string& s);
+    std::string extractFunction(const std::string& line);
+    bool isIgnorableLine(const std::string& line, bool ignoreEmpty, bool ignoreWhitespace);
+    std::vector<std::pair<char, std::string>>
+    lcsDiff(const std::vector<std::string>& a,
+        const std::vector<std::string>& b);
 };

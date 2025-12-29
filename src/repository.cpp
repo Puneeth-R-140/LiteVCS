@@ -7,7 +7,8 @@
 #include <zlib.h>
 #include <vector>
 #include <algorithm>
-
+#include <unordered_map>
+#include <regex>
 
 Repository::Repository(const std::string& rootPath)
     : root(rootPath),
@@ -75,6 +76,11 @@ void Repository::save(const std::string& message) {
         std::cout << "Error: not a LiteVCS repository.\n";
         return;
     }
+    std::ifstream idx(indexFile);
+    if (!idx.peek()) {
+    std::cout << "Error: no tracked files to commit.\n";
+    return;
+    }
 
     std::ifstream index(indexFile);
     std::string file;
@@ -129,17 +135,28 @@ std::string Repository::createBlob(const std::string& filePath) {
 
 std::string Repository::readObject(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        std::cout << "Error: object missing: " << path << "\n";
+        return {};
+    }
+
     std::vector<char> compressed((std::istreambuf_iterator<char>(in)),
                                   std::istreambuf_iterator<char>());
 
-    uLongf decompressedSize = 10 * compressed.size();
-    std::vector<Bytef> buffer(decompressedSize);
+    // Start with a conservative cap; grow if needed
+    uLongf outCap = compressed.size() * 6 + 64;
+    std::vector<Bytef> out(outCap);
 
-    ::uncompress(buffer.data(), &decompressedSize,
-                 reinterpret_cast<Bytef*>(compressed.data()),
-                 compressed.size());
+    int res = ::uncompress(out.data(), &outCap,
+                            reinterpret_cast<Bytef*>(compressed.data()),
+                            compressed.size());
 
-    return std::string(reinterpret_cast<char*>(buffer.data()), decompressedSize);
+    if (res != Z_OK) {
+        std::cout << "Error: failed to decompress object.\n";
+        return {};
+    }
+
+    return std::string(reinterpret_cast<char*>(out.data()), outCap);
 }
 
 void Repository::showHistory() {
@@ -173,11 +190,14 @@ void Repository::showHistory() {
 
 void Repository::goToCommit(const std::string& commitHash) {
    std::string resolved = resolveCommitHash(commitHash);
-
-if (resolved.empty()) {
+    if (resolved.empty()) {
     std::cout << "Error: commit hash ambiguous or not found\n";
     return;
-}
+    }
+    if (resolved.empty()) {
+    std::cout << "Error: commit hash ambiguous or not found\n";
+    return;
+    }
 
 std::string commitPath = vcsDir + "/objects/commits/" + resolved;
 
@@ -239,7 +259,75 @@ std::vector<std::string> Repository::splitLines(const std::string& content) {
     return lines;
 }
 
-void Repository::diff() {
+std::vector<std::pair<char, std::string>>
+Repository::lcsDiff(const std::vector<std::string>& a,
+                    const std::vector<std::string>& b) {
+
+    int n = static_cast<int>(a.size());
+    int m = static_cast<int>(b.size());
+
+    // DP table
+    std::vector<std::vector<int>> dp(n + 1, std::vector<int>(m + 1, 0));
+
+    // Build LCS length table
+    for (int i = n - 1; i >= 0; --i) {
+        for (int j = m - 1; j >= 0; --j) {
+            if (a[i] == b[j])
+                dp[i][j] = 1 + dp[i + 1][j + 1];
+            else
+                dp[i][j] = std::max(dp[i + 1][j], dp[i][j + 1]);
+        }
+    }
+
+    // Reconstruct diff
+    std::vector<std::pair<char, std::string>> result;
+    int i = 0, j = 0;
+
+    while (i < n && j < m) {
+        if (a[i] == b[j]) {
+            // unchanged line → skip
+            i++;
+            j++;
+        }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) {
+            result.push_back({ '-', a[i] });
+            i++;
+        }
+        else {
+            result.push_back({ '+', b[j] });
+            j++;
+        }
+    }
+
+    // Remaining deletions
+    while (i < n) {
+        result.push_back({ '-', a[i++] });
+    }
+
+    // Remaining insertions
+    while (j < m) {
+        result.push_back({ '+', b[j++] });
+    }
+
+    return result;
+}
+
+bool Repository::isIgnorableLine(const std::string& line,
+                                 bool ignoreEmpty,
+                                 bool ignoreWhitespace) {
+    if (ignoreEmpty && line.empty()) return true;
+
+    if (ignoreWhitespace) {
+        for (char c : line) {
+            if (!isspace(static_cast<unsigned char>(c)))
+                return false;
+        }
+        return true; // all whitespace
+    }
+    return false;
+}
+
+void Repository::diff(bool ignoreEmpty, bool ignoreWhitespace) {
     if (!isInitialized()) {
         std::cout << "Error: not a LiteVCS repository.\n";
         return;
@@ -251,7 +339,6 @@ void Repository::diff() {
         return;
     }
 
-    // Load commit → tree
     std::string commitData =
         readObject(vcsDir + "/objects/commits/" + head);
 
@@ -271,43 +358,155 @@ void Repository::diff() {
     bool anyChange = false;
 
     while (treeStream >> filePath >> blobHash) {
+        std::filesystem::path wp =
+        std::filesystem::path(root) / filePath;
 
-        std::string blobData =
-            readObject(vcsDir + "/objects/blobs/" + blobHash);
-
-        std::string workingData =
-            utils::read_file(root + "/" + filePath);
-
-        auto oldLines = splitLines(blobData);
-        auto newLines = splitLines(workingData);
-
-        if (oldLines == newLines)
-            continue;
-
-        anyChange = true;
+    if (!std::filesystem::exists(wp)) {
         std::cout << "diff -- " << filePath << "\n";
+        std::cout << "- [file deleted]\n\n";
+        anyChange = true;
+        continue;  
+    }
 
-        size_t i = 0, j = 0;
-        while (i < oldLines.size() || j < newLines.size()) {
-            if (i < oldLines.size() && j < newLines.size()
-                && oldLines[i] == newLines[j]) {
-                i++; j++;
+        auto oldLines = splitLines(
+            readObject(vcsDir + "/objects/blobs/" + blobHash));
+        auto newLines = splitLines(
+            utils::read_file(root + "/" + filePath));
+
+        auto changes = lcsDiff(oldLines, newLines);
+
+        bool printedHeader = false;
+        for (auto& [type, text] : changes) {
+
+            if (isIgnorableLine(text, ignoreEmpty, ignoreWhitespace))
+                continue;
+
+            if (!printedHeader) {
+                std::cout << "diff -- " << filePath << "\n";
+                printedHeader = true;
+                anyChange = true;
             }
-            else {
-                if (i < oldLines.size()) {
-                    std::cout << "- " << oldLines[i] << "\n";
-                    i++;
-                }
-                if (j < newLines.size()) {
-                    std::cout << "+ " << newLines[j] << "\n";
-                    j++;
-                }
-            }
+
+            std::cout << type << " " << text << "\n";
         }
-        std::cout << "\n";
+
+        if (printedHeader) std::cout << "\n";
     }
 
     if (!anyChange) {
         std::cout << "No changes detected.\n";
     }
 }
+
+std::string Repository::normalizeWhitespace(const std::string& s) {
+    std::string out;
+    bool inSpace = false;
+    for (char c : s) {
+        if (isspace(static_cast<unsigned char>(c))) {
+            if (!inSpace) out.push_back(' ');
+            inSpace = true;
+        } else {
+            out.push_back(c);
+            inSpace = false;
+        }
+    }
+    // trim
+    while (!out.empty() && out.front() == ' ') out.erase(out.begin());
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
+}
+
+std::string Repository::extractFunction(const std::string& line) {
+    // Matches: return_type name(args) {   OR   name(args){
+    static std::regex fn(R"(([A-Za-z_][A-Za-z0-9_]*)\s*\([^;]*\)\s*\{)");
+    std::smatch m;
+    if (std::regex_search(line, m, fn)) {
+        return m[1];
+    }
+    return "";
+}
+
+void Repository::diffSmart(bool ignoreEmpty, bool ignoreWhitespace) {
+    if (!isInitialized()) {
+        std::cout << "Error: not a LiteVCS repository.\n";
+        return;
+    }
+
+    std::string head = utils::read_file(vcsDir + "/HEAD");
+    if (head == "null" || head.empty()) {
+        std::cout << "No commits to compare against.\n";
+        return;
+    }
+
+    std::string commitData =
+        readObject(vcsDir + "/objects/commits/" + head);
+
+    std::istringstream commitStream(commitData);
+    std::string line, treeHash;
+
+    while (std::getline(commitStream, line)) {
+        if (line.rfind("tree", 0) == 0)
+            treeHash = line.substr(5);
+    }
+
+    std::string treeData =
+        readObject(vcsDir + "/objects/trees/" + treeHash);
+
+    std::istringstream treeStream(treeData);
+    std::string filePath, blobHash;
+    bool anyMeaningful = false;
+
+    while (treeStream >> filePath >> blobHash) {
+         std::filesystem::path wp =
+        std::filesystem::path(root) / filePath;
+
+    if (!std::filesystem::exists(wp)) {
+        std::cout << "diff -- " << filePath << "\n";
+        std::cout << "- [file deleted]\n\n";
+        anyMeaningful = true;
+        continue;  
+    }
+        auto oldLines = splitLines(
+            readObject(vcsDir + "/objects/blobs/" + blobHash));
+        auto newLines = splitLines(
+            utils::read_file(root + "/" + filePath));
+
+        std::unordered_map<std::string, std::vector<std::string>> oldFns, newFns;
+        std::string current;
+
+        for (const auto& l : oldLines) {
+            if (isIgnorableLine(l, ignoreEmpty, ignoreWhitespace)) continue;
+            std::string fn = extractFunction(l);
+            if (!fn.empty()) current = fn;
+            if (!current.empty())
+                oldFns[current].push_back(normalizeWhitespace(l));
+        }
+
+        current.clear();
+        for (const auto& l : newLines) {
+            if (isIgnorableLine(l, ignoreEmpty, ignoreWhitespace)) continue;
+            std::string fn = extractFunction(l);
+            if (!fn.empty()) current = fn;
+            if (!current.empty())
+                newFns[current].push_back(normalizeWhitespace(l));
+        }
+
+        for (const auto& [fn, oldBody] : oldFns) {
+            auto it = newFns.find(fn);
+            if (it == newFns.end()) continue;
+            if (oldBody != it->second) {
+                if (!anyMeaningful) {
+                    std::cout << "smart-diff -- " << filePath << "\n\n";
+                }
+                anyMeaningful = true;
+                std::cout << "Modified function: " << fn << "()\n";
+            }
+        }
+    }
+
+    if (!anyMeaningful) {
+        std::cout << "No meaningful changes detected.\n";
+    }
+}
+
+
