@@ -1,3 +1,15 @@
+/**
+ * LiteVCS Repository Implementation
+ * 
+ * This file implements the core version control functionality.
+ * 
+ * SECURITY NOTE: Uses SHA-1 for Git compatibility and educational purposes.
+ * Production systems should use SHA-256 or stronger cryptographic hashes.
+ * 
+ * @author Puneeth R (GHOST)
+ * @license MIT
+ */
+
 #include "repository.h"
 #include "utils.h"
 #include <iostream>
@@ -9,6 +21,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <regex>
+#include <stdexcept>
 
 Repository::Repository(const std::string& rootPath)
     : root(rootPath),
@@ -36,28 +49,44 @@ void Repository::init() {
     std::cout << "Initialized empty LiteVCS repository.\n";
 }
 
+/**
+ * Track a file for version control
+ * @param filePath Path to the file to track
+ */
 void Repository::trackFile(const std::string& filePath) {
     if (!isInitialized()) {
         std::cout << "Error: not a LiteVCS repository.\n";
         return;
     }
 
-    std::filesystem::path fullPath = root + "/" + filePath;
+    try {
+        std::filesystem::path fullPath = root + "/" + filePath;
 
-    if (!utils::exists(fullPath.string())) {
-        std::cout << "Error: file does not exist\n";
-        return;
-    }
+        if (!utils::exists(fullPath.string())) {
+            std::cout << "Error: file does not exist\n";
+            return;
+        }
 
-    std::filesystem::path inputPath(filePath);
-    std::filesystem::path absolute =
-    std::filesystem::absolute(inputPath);
+        std::filesystem::path inputPath(filePath);
+        std::filesystem::path absolute = std::filesystem::absolute(inputPath);
+        std::filesystem::path rootPath = std::filesystem::absolute(root);
 
-std::filesystem::path relative =
-    std::filesystem::relative(absolute, root);
+        // Security: Prevent path traversal attacks (e.g., "../../../etc/passwd")
+        std::filesystem::path canonical = std::filesystem::weakly_canonical(absolute);
+        std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(rootPath);
+        
+        // Check if the file is within the repository root
+        auto [rootEnd, fileEnd] = std::mismatch(canonicalRoot.begin(), canonicalRoot.end(),
+                                                 canonical.begin(), canonical.end());
+        if (rootEnd != canonicalRoot.end()) {
+            std::cout << "Error: path traversal detected - file must be within repository\n";
+            return;
+        }
 
-// normalize to generic form (uses /)
-std::string normalized = relative.generic_string();
+        std::filesystem::path relative = std::filesystem::relative(absolute, root);
+
+        // normalize to generic form (uses /)
+        std::string normalized = relative.generic_string();
 
 auto tracked = utils::read_lines(indexFile);
 for (const auto& f : tracked) {
@@ -67,8 +96,13 @@ for (const auto& f : tracked) {
     }
 }
 
-utils::append_line(indexFile, normalized);
-std::cout << "Tracked: " << normalized << "\n";
+        utils::append_line(indexFile, normalized);
+        std::cout << "Tracked: " << normalized << "\n";
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cout << "Error: filesystem operation failed - " << e.what() << "\n";
+    } catch (const std::exception& e) {
+        std::cout << "Error: " << e.what() << "\n";
+    }
 }
 
 void Repository::save(const std::string& message) {
@@ -133,6 +167,11 @@ std::string Repository::createBlob(const std::string& filePath) {
     return hash;
 }
 
+/**
+ * Read and decompress a stored object
+ * @param path Path to the compressed object
+ * @return Decompressed content
+ */
 std::string Repository::readObject(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -143,8 +182,9 @@ std::string Repository::readObject(const std::string& path) {
     std::vector<char> compressed((std::istreambuf_iterator<char>(in)),
                                   std::istreambuf_iterator<char>());
 
-    // Start with a conservative cap; grow if needed
-    uLongf outCap = compressed.size() * 6 + 64;
+    // Security: Prevent decompression bombs by limiting output size
+    const uLongf MAX_DECOMPRESSED_SIZE = 100 * 1024 * 1024; // 100 MB limit
+    uLongf outCap = std::min(static_cast<uLongf>(compressed.size() * 6 + 64), MAX_DECOMPRESSED_SIZE);
     std::vector<Bytef> out(outCap);
 
     int res = ::uncompress(out.data(), &outCap,
@@ -152,7 +192,11 @@ std::string Repository::readObject(const std::string& path) {
                             compressed.size());
 
     if (res != Z_OK) {
-        std::cout << "Error: failed to decompress object.\n";
+        if (res == Z_BUF_ERROR) {
+            std::cout << "Error: decompressed object too large (possible decompression bomb)\n";
+        } else {
+            std::cout << "Error: failed to decompress object (code: " << res << ")\n";
+        }
         return {};
     }
 

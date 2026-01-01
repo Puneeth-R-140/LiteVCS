@@ -1,0 +1,62 @@
+# Build artifacts
+*.exe
+*.o
+*.obj
+*.out
+vcs.exe
+vcs
+
+# VCS repository data
+.vcs/
+
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# IDE/Editor
+.vscode/
+.vs/
+.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.cache
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
