@@ -1,147 +1,120 @@
 
-# 📘 LiteVCS — A Lightweight Version Control System (C++)
+# LiteVCS - A Lightweight Version Control System
 
-LiteVCS is a Git-inspired, lightweight version control system built from scratch in **C++** to understand and implement the **core internals of modern VCS tools** — including content-addressed storage, immutable commits, diff engines, and history traversal.
+Ever wondered how Git actually works under the hood? I built LiteVCS from scratch in C++ to understand the core concepts of version control systems - content-addressed storage, immutable commits, diff algorithms, and history management.
 
-> ⚠️ LiteVCS is **not a Git replacement**.
-> It is a **learning-oriented, systems-level implementation** focused on correctness, clarity, and engineering trade-offs.
+**Note:** This isn't meant to replace Git. It's a learning project focused on understanding how VCS tools work internally.
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
 # Compile
 g++ -std=c++17 src/*.cpp -lssl -lcrypto -lz -o vcs
 
-# Use
+# Use it
 ./vcs init
 ./vcs track myfile.txt
 ./vcs save "Initial commit"
 ./vcs history
 ```
 
-**Windows users:** Replace `vcs` with `vcs.exe` and use PowerShell or MSYS2 terminal.
+**Windows users:** Use `vcs.exe` instead of `vcs` and run from PowerShell or MSYS2.
 
-📖 **For detailed commands and workflows, see [QUICKSTART.md](QUICKSTART.md)**
-
----
-
-## 🚀 Key Features
-
-### ✅ Core Version Control
-
-* Repository initialization
-* File staging (index)
-* Immutable commits using **SHA-1**
-* Content deduplication via hashing
-* Commit history traversal
-* Time-travel (checkout to previous commits)
-
-### 🔍 Diff Engine
-
-* **LCS-based line diff** (handles insertions & deletions correctly)
-* Smart / semantic diff (function-level change detection)
-* User-controlled noise suppression:
-
-  * `--ignore-empty`
-  * `--ignore-whitespace`
-
-### 🛡️ Hardening & Safety
-
-* Prevents empty commits
-* Detects deleted files explicitly
-* Safe, bounded decompression
-* Clear, defensive error handling
-* Cross-platform path normalization
+For more commands and examples, check out [QUICKSTART.md](QUICKSTART.md).
 
 ---
 
-## 🧠 Design Philosophy
+## What It Does
 
-LiteVCS follows the same core principles as Git:
+### Core Features
 
-* **Content-addressed storage**
-  Objects are identified by cryptographic hashes of their content.
+- Initialize repositories
+- Track and stage files
+- Create immutable commits (using SHA-1)
+- View commit history
+- Time-travel to previous commits
+- Smart diff engine with LCS algorithm
 
-* **Immutability**
-  Commits cannot be modified — changes create new commits.
+### Diff Capabilities
 
-* **Separation of concerns**
-
-  * Blobs → file content
-  * Trees → directory snapshots
-  * Commits → history & metadata
-
-* **User control over defaults**
-  Whitespace and formatting are treated as real changes unless explicitly ignored.
+- **Line-by-line diff** - See exact changes
+- **Smart/semantic diff** - Function-level change detection
+- **Flexible filtering** - Ignore empty lines or whitespace
 
 ---
 
-## 📁 Repository Structure
+## How It Works
 
-```text
+LiteVCS follows Git's design principles:
+
+**Content-Addressed Storage**  
+Files are stored by their hash, not their name. Same content = same hash = stored once.
+
+**Immutability**  
+Commits can't be modified. Changes create new commits.
+
+**Simple Structure**  
+- Blobs store file contents
+- Trees store directory snapshots
+- Commits store metadata and history
+
+**User Control**  
+Whitespace and formatting are treated as real changes unless you explicitly ignore them.
+
+---
+
+## Repository Structure
+
+```
 .vcs/
 ├── objects/
-│   ├── blobs/      # file contents (compressed)
-│   ├── trees/      # snapshots
+│   ├── blobs/      # compressed file contents
+│   ├── trees/      # directory snapshots
 │   └── commits/    # commit metadata
-├── index           # staging area
-├── HEAD            # current commit pointer
-└── config          # repository metadata
+├── index           # tracked files
+├── HEAD            # current commit
+└── config          # repo settings
 ```
 
 ---
 
-## 🛠️ Build Instructions
+## Building
 
 ### Requirements
 
-* C++17 or newer
-* OpenSSL (for SHA-1)
-* zlib (for compression)
+- C++17 compiler (g++, clang++)
+- OpenSSL (for SHA-1 hashing)
+- zlib (for compression)
 
-### Compile
-
-#### Option 1: Direct Compilation (Recommended for Quick Start)
+### Option 1: Direct Compilation (Easiest)
 
 **Linux/macOS:**
 ```bash
 g++ -std=c++17 src/*.cpp -lssl -lcrypto -lz -o vcs
 ```
 
-**Windows (MinGW/MSYS2):**
+**Windows (MSYS2/MinGW):**
 ```bash
 g++ -std=c++17 src/*.cpp -lssl -lcrypto -lz -o vcs.exe
 ```
 
-**Windows (PowerShell):**
-```powershell
-g++ -std=c++17 src/*.cpp -lssl -lcrypto -lz -o vcs.exe
-```
-
-#### Option 2: Using CMake (Cross-Platform)
+### Option 2: CMake
 
 ```bash
-mkdir build
-cd build
+mkdir build && cd build
 cmake ..
 cmake --build .
 ```
 
-The executable will be in the `build/` directory.
-
-#### Option 3: Using Makefile (Unix-like systems)
+### Option 3: Makefile
 
 ```bash
 make
 ```
 
-This creates the `vcs` executable in the current directory.
-
 ### Quick Test
-
-After compilation, verify it works:
 
 ```bash
 ./vcs init
@@ -152,9 +125,9 @@ After compilation, verify it works:
 
 ---
 
-## 📌 Usage
+## Usage
 
-### Initialize Repository
+### Initialize a Repository
 
 ```bash
 vcs init
@@ -164,12 +137,13 @@ vcs init
 
 ```bash
 vcs track src/main.cpp
+vcs track readme.md
 ```
 
 ### Commit Changes
 
 ```bash
-vcs save "Initial commit"
+vcs save "Added new feature"
 ```
 
 ### View History
@@ -178,27 +152,38 @@ vcs save "Initial commit"
 vcs history
 ```
 
-### Checkout a Commit
+Output:
+```
+commit d2db873e
+Date: 1767018788
+Message: initial commit 2
 
-```bash
-vcs go <commit_hash>
+commit 776d0bdb
+Date: 1767017381
+Message: initial commit
 ```
 
-(short hashes are supported, Git-style)
+### Go Back in Time
+
+```bash
+vcs go d2db873e    # short hash works
+```
 
 ---
 
-## 🔎 Diff Examples
+## Diff Examples
 
-### Line Diff
+### Basic Diff
 
 ```bash
 vcs diff
 ```
 
-```diff
-diff -- src/main.cpp
-+ // added logging
+Output:
+```
+diff -- test.txt
++ New line added
+- Old line removed
 ```
 
 ### Ignore Empty Lines
@@ -213,192 +198,178 @@ vcs diff --ignore-empty
 vcs diff --ignore-whitespace
 ```
 
-### Smart / Semantic Diff
+### Smart Diff (Function-Level)
 
 ```bash
 vcs diff --smart
 ```
 
-```text
-smart-diff -- src/main.cpp
+Output:
+```
+smart-diff -- main.cpp
 
 Modified function: main()
+Modified function: calculateTotal()
 ```
 
----
-
-## 🧪 What This Project Demonstrates
-
-This project intentionally focuses on **depth over breadth** and demonstrates:
-
-* Systems programming in C++
-* File-system–backed databases
-* Cryptographic hashing & compression
-* Dynamic programming (LCS diff)
-* Defensive engineering & invariants
-* Tool usability & developer experience
+**When to use what:**
+- Use regular diff when you want to see exact line changes
+- Use smart diff when you want a high-level overview of which functions changed
 
 ---
 
-## 🧩 Known Limitations
+## What I Learned
 
-* No branching or merging
-* No networking / remote repositories
-* Single-user, local-only design
+Building this taught me:
 
-These are **deliberate design choices** to keep the focus on core internals.
-
----
-
-## 📈 Future Work (Optional)
-
-* Branching & merge strategies
-* Commit analytics / repo insights
-* Improved language-aware diffing
-* Performance optimizations for large files
+- How content-addressed storage works
+- Cryptographic hashing and compression
+- Dynamic programming (LCS algorithm for diffs)
+- File system operations in C++
+- Defensive programming and error handling
+- The trade-offs in tool design
 
 ---
 
-## 🎯 Why LiteVCS?
+## Known Limitations
 
-> “I built LiteVCS to deeply understand how version control systems work internally — not just how to use them.”
+These are intentional to keep the project focused:
 
-This project mirrors **real engineering problems**:
-
-* silent corruption
-* invariant violations
-* diff correctness
-* usability trade-offs
+- No branching or merging
+- No remote repositories
+- Single-user, local-only
+- No staging area modifications
 
 ---
 
-## 🧑‍💻 Author
-
-Built by **GHOST** aka **Puneeth R**
-Focused on systems engineering, tooling, and low-level design.
-
----
-
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Build Issues
 
-**OpenSSL not found:**
+**Can't find OpenSSL:**
 ```bash
 # Ubuntu/Debian
 sudo apt-get install libssl-dev
 
 # macOS
 brew install openssl
-export OPENSSL_ROOT_DIR=/usr/local/opt/openssl
 ```
 
-**zlib not found:**
+**Can't find zlib:**
 ```bash
 # Ubuntu/Debian
 sudo apt-get install zlib1g-dev
 
-# macOS (usually pre-installed)
+# macOS
 brew install zlib
 ```
 
-**Windows (MinGW/MSYS2):**
+**Windows - g++ not found:**
 ```bash
-# Install dependencies via MSYS2
+# Install MSYS2 from https://www.msys2.org/
+# Then in MSYS2 terminal:
 pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
-
-# Add to PATH (if not already)
-# C:\msys64\mingw64\bin
 ```
 
-**Compilation errors on Windows:**
-
-If you get `g++: command not found`:
+**Windows - Linker errors:**
 ```bash
-# Install MinGW-w64 via MSYS2
-# Download from: https://www.msys2.org/
-# Then install g++:
-pacman -S mingw-w64-x86_64-gcc
-```
-
-If you get linker errors (`cannot find -lssl`):
-```bash
-# Make sure OpenSSL and zlib are installed
+# Make sure libraries are installed
 pacman -S mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
 
-# Or specify library paths explicitly:
+# Or specify paths explicitly:
 g++ -std=c++17 src/*.cpp -LC:/msys64/mingw64/lib -lssl -lcrypto -lz -o vcs.exe
-```
-
-**Quick Windows Setup (MSYS2):**
-```bash
-# 1. Install MSYS2 from https://www.msys2.org/
-# 2. Open MSYS2 MinGW 64-bit terminal
-# 3. Install tools:
-pacman -Syu
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
-
-# 4. Navigate to your project and compile:
-cd /d/LiteVCS
-g++ -std=c++17 src/*.cpp -lssl -lcrypto -lz -o vcs.exe
 ```
 
 ### Runtime Issues
 
-**"Error: not a LiteVCS repository"**
-- Run `vcs init` in your project directory first
+**"Error: not a LiteVCS repository"**  
+Run `vcs init` first.
 
-**"Error: path traversal detected"**
-- File must be within the repository directory
-- Avoid using `../` in file paths
+**"Error: path traversal detected"**  
+File must be inside the repository. Don't use `../` in paths.
 
-**Decompression errors:**
-- Repository may be corrupted
-- Try re-initializing with `vcs init`
+**Decompression errors**  
+Repository might be corrupted. Try `vcs init` in a fresh directory.
 
 ---
 
-## 🔒 Security Considerations
+## Security Notes
 
-### Educational Purpose
+This is an educational project. Some things to know:
 
-LiteVCS is designed for **learning** and **demonstration** purposes:
+- **SHA-1 is used for Git compatibility** - Production systems should use SHA-256
+- **Path traversal protection** - Validates file paths to prevent attacks
+- **Decompression limits** - 100MB cap to prevent memory bombs
+- **Input validation** - Checks commit hashes and user input
 
-* **SHA-1 Usage**: Uses SHA-1 for Git compatibility. Production systems should use SHA-256 or stronger.
-* **Path Traversal Protection**: Validates file paths to prevent directory traversal attacks.
-* **Decompression Limits**: Prevents decompression bombs with 100MB size limit.
-* **Input Validation**: Validates commit hashes and user inputs.
-
-### Not Recommended For
-
-* Production version control
-* Sensitive or critical data
-* Large-scale projects (>100MB files)
+**Don't use this for:**
+- Production version control
+- Sensitive data
+- Large files (>100MB)
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-This is a learning project, but suggestions are welcome!
+Want to help improve LiteVCS? Awesome!
 
-1. Fork the repository
-2. Create a feature branch
+Check out [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Coding standards
+- How to submit changes
+
+**Quick contribution guide:**
+1. Fork the repo
+2. Create a branch: `git checkout -b feature/cool-feature`
 3. Make your changes
-4. Submit a pull request
+4. Test it works
+5. Submit a PR
 
-**Areas for contribution:**
-* Additional diff algorithms
-* Performance optimizations
-* Better error messages
-* Cross-platform testing
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-Copyright (c) 2026 Puneeth R (GHOST)
+**Ideas for contributions:**
+- Add unit tests
+- Optimize the diff algorithm
+- Improve error messages
+- Test on different platforms
+- Add branching support
+- Better documentation
 
 ---
 
+## Future Ideas
+
+Things I might add (or you could contribute):
+
+- Branch and merge support
+- Commit analytics
+- Language-aware diffs
+- Performance optimizations for large repos
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+Feel free to use this code for learning, teaching, or building your own tools.
+
+---
+
+## Author
+
+Built by **Puneeth R** (GHOST)
+
+I'm interested in systems programming, low-level design, and understanding how tools work internally.
+
+---
+
+## Why I Built This
+
+> "I wanted to deeply understand how version control works - not just how to use it, but how it actually works under the hood."
+
+This project helped me understand real engineering problems like silent corruption, invariant violations, diff correctness, and usability trade-offs.
+
+If you're learning systems programming or want to understand Git better, feel free to explore the code and ask questions!
+
+---
+
+**Star this repo if you found it useful!** ⭐
